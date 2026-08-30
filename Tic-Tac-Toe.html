@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tic-Tac-Toe — vs. the System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,900;1,9..144,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #F3EFE6;
+    --ink: #16140F;
+    --accent: #D9481C;
+    --muted: #6B6455;
+    --rule: rgba(22, 20, 15, 0.85);
+    --mark-x: var(--ink);
+    --mark-o: var(--accent);
+    --win-flash: rgba(217, 72, 28, 0.08);
+  }
+  html[data-theme="ink"] {
+    --paper: #14130F;
+    --ink: #EDE7DA;
+    --accent: #E8603A;
+    --muted: #8F8878;
+    --rule: rgba(237, 231, 218, 0.85);
+    --mark-x: var(--ink);
+    --mark-o: var(--accent);
+    --win-flash: rgba(232, 96, 58, 0.10);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { height: 100%; }
+
+  body {
+    min-height: 100%;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 14px;
+    line-height: 1.5;
+    padding: clamp(20px, 5vw, 64px);
+    transition: background 0.35s ease, color 0.35s ease;
+  }
+
+  .page {
+    max-width: 880px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 40px;
+  }
+  @media (min-width: 760px) {
+    .page {
+      grid-template-columns: minmax(0, 1.4fr) minmax(200px, 1fr);
+      align-items: start;
+      gap: 64px;
+    }
+  }
+
+  /* ---------- masthead ---------- */
+  header { border-bottom: 2px solid var(--ink); padding-bottom: 20px; }
+  h1 {
+    font-family: "Fraunces", Georgia, serif;
+    font-weight: 900;
+    font-size: clamp(2.4rem, 7vw, 4.2rem);
+    letter-spacing: -0.02em;
+    line-height: 0.95;
+    text-wrap: balance;
+  }
+  h1 em { font-style: italic; font-weight: 400; color: var(--accent); }
+  .deck {
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+  }
+
+  /* ---------- status ticker ---------- */
+  .ticker {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    margin: 26px 0 18px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+  }
+  .ticker .state { font-weight: 500; }
+  .ticker .state[data-mood="win"]  { color: var(--accent); }
+  .ticker .state[data-mood="lose"] { color: var(--muted); }
+  .ticker .hint { color: var(--muted); text-align: right; }
+
+  /* ---------- board ---------- */
+  .board-wrap { position: relative; max-width: 440px; }
+  .board {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .cell {
+    aspect-ratio: 1;
+    background: none;
+    border: 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12%;
+    border-right: 2px solid var(--rule);
+    border-bottom: 2px solid var(--rule);
+    transition: background 0.15s ease;
+  }
+  .cell:nth-child(3n) { border-right: 0; }
+  .cell:nth-child(n+7) { border-bottom: 0; }
+  .cell:hover:not(:disabled),
+  .cell:focus-visible:not(:disabled) { background: var(--win-flash); outline: none; }
+  .cell:focus-visible { box-shadow: inset 0 0 0 3px var(--accent); }
+  .cell:disabled { cursor: default; }
+  .cell svg { width: 100%; height: 100%; display: block; }
+
+  .stroke {
+    fill: none;
+    stroke-width: 9;
+    stroke-linecap: round;
+  }
+  .cell.x .stroke { stroke: var(--mark-x); }
+  .cell.o .stroke { stroke: var(--mark-o); }
+
+  html[data-motion="on"] .stroke {
+    stroke-dasharray: var(--len);
+    stroke-dashoffset: var(--len);
+    animation: draw 0.28s ease-out forwards;
+  }
+  .stroke:nth-child(2) { animation-delay: 0.14s; }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+
+  /* winning strike-through */
+  .strike-line {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+  .strike-line line {
+    stroke: var(--accent);
+    stroke-width: 5;
+    stroke-linecap: round;
+  }
+  html[data-motion="on"] .strike-line line {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    animation: strike 0.4s 0.15s ease-out forwards;
+  }
+  @keyframes strike { to { stroke-dashoffset: 0; } }
+
+  /* ---------- ledger (score) ---------- */
+  aside .label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--muted);
+    margin-bottom: 14px;
+  }
+  .ledger { border-top: 2px solid var(--ink); }
+  .ledger .row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 14px 0;
+    border-bottom: 1px solid color-mix(in oklch, var(--ink) 25%, transparent);
+  }
+  .ledger .who { font-size: 12px; text-transform: uppercase; letter-spacing: 0.12em; }
+  .ledger .num {
+    font-family: "Fraunces", Georgia, serif;
+    font-weight: 900;
+    font-size: 2.2rem;
+    line-height: 1;
+    min-width: 2ch;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .ledger .row.you .num { color: var(--accent); }
+
+  /* difficulty */
+  .difficulty { margin-top: 30px; }
+  .difficulty .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--muted); margin-bottom: 10px; }
+  .diff-btn {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: 0;
+    color: var(--muted);
+    font: inherit;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 10px 0;
+    cursor: pointer;
+    border-bottom: 1px solid color-mix(in oklch, var(--ink) 15%, transparent);
+    transition: color 0.15s;
+    min-height: 44px;
+  }
+  .diff-btn:hover { color: var(--ink); }
+  .diff-btn[aria-pressed="true"] {
+    color: var(--ink);
+    font-weight: 500;
+  }
+  .diff-btn[aria-pressed="true"]::after { content: " ←"; color: var(--accent); }
+  .diff-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* actions */
+  .actions { margin-top: 30px; display: flex; flex-direction: column; gap: 10px; }
+  .btn {
+    font: inherit;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    padding: 13px 20px;
+    min-height: 44px;
+    cursor: pointer;
+    border: 2px solid var(--ink);
+    background: var(--ink);
+    color: var(--paper);
+    transition: transform 0.12s ease, opacity 0.15s;
+  }
+  .btn:hover { opacity: 0.88; }
+  .btn:active { transform: translateY(1px); }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .btn.ghost { background: none; color: var(--ink); }
+  .btn.ghost:hover { background: var(--win-flash); opacity: 1; }
+
+  /* ---------- tweaks ---------- */
+  .tweaks {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    font-size: 11px;
+  }
+  .tweaks-btn {
+    font: inherit;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    background: none;
+    border: 1px solid color-mix(in oklch, var(--ink) 40%, transparent);
+    color: var(--muted);
+    padding: 8px 14px;
+    cursor: pointer;
+    min-height: 36px;
+  }
+  .tweaks-btn:hover { color: var(--ink); }
+  .tweaks-panel {
+    display: none;
+    margin-top: 8px;
+    border: 1px solid color-mix(in oklch, var(--ink) 40%, transparent);
+    background: var(--paper);
+    padding: 12px;
+    min-width: 180px;
+  }
+  .tweaks.open .tweaks-panel { display: block; }
+  .tweaks-panel button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    font: inherit;
+    background: none;
+    border: 0;
+    color: var(--ink);
+    padding: 7px 0;
+    cursor: pointer;
+    min-height: 32px;
+  }
+  .tweaks-panel button:hover { color: var(--accent); }
+
+  footer {
+    margin-top: 48px;
+    color: var(--muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+  html[data-motion="off"] *, html[data-motion="off"] *::before, html[data-motion="off"] *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  html[data-motion="off"] .stroke { stroke-dashoffset: 0; }
+  html[data-motion="off"] .strike-line line { stroke-dashoffset: 0; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <main>
+    <header>
+      <h1>Tic-Tac-Toe<br><em>vs. the System</em></h1>
+      <p class="deck">You draw X · The machine answers O</p>
+    </header>
+
+    <div class="ticker">
+      <span class="state" id="status">Your move.</span>
+      <span class="hint" id="hint">Pick any square</span>
+    </div>
+
+    <div class="board-wrap">
+      <div class="board" id="board" role="grid" aria-label="Tic-tac-toe board"></div>
+      <svg class="strike-line" id="strikeLine" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"></svg>
+    </div>
+
+    <footer>Three in a row takes the round.</footer>
+  </main>
+
+  <aside>
+    <p class="label">Ledger</p>
+    <div class="ledger">
+      <div class="row you"><span class="who">You</span><span class="num" id="scoreYou">0</span></div>
+      <div class="row"><span class="who">Draws</span><span class="num" id="scoreDraw">0</span></div>
+      <div class="row"><span class="who">System</span><span class="num" id="scoreCpu">0</span></div>
+    </div>
+
+    <div class="difficulty" role="group" aria-label="Difficulty">
+      <p class="label">Opponent</p>
+      <button class="diff-btn" data-diff="easy"   aria-pressed="false">Easy — careless</button>
+      <button class="diff-btn" data-diff="medium" aria-pressed="false">Medium — falls for traps</button>
+      <button class="diff-btn" data-diff="hard"   aria-pressed="true">Hard — never loses</button>
+    </div>
+
+    <div class="actions">
+      <button class="btn" id="restart">New round</button>
+      <button class="btn ghost" id="resetScore">Wipe the ledger</button>
+    </div>
+  </aside>
+</div>
+
+<div class="tweaks" id="tweaks">
+  <button class="tweaks-btn" id="tweaksBtn" aria-expanded="false">Tweaks</button>
+  <div class="tweaks-panel">
+    <button id="themeToggle">Theme: Paper</button>
+    <button id="motionToggle">Motion: On</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  const HUMAN = "x", CPU = "o";
+  const WIN_LINES = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+  const MARK_SVG = {
+    x: `<svg viewBox="0 0 100 100" aria-hidden="true">
+          <line class="stroke" style="--len:86" x1="22" y1="22" x2="78" y2="78"/>
+          <line class="stroke" style="--len:86" x1="78" y1="22" x2="22" y2="78"/>
+        </svg>`,
+    o: `<svg viewBox="0 0 100 100" aria-hidden="true">
+          <circle class="stroke" style="--len:207" cx="50" cy="50" r="33"/>
+        </svg>`
+  };
+
+  let board = Array(9).fill("");
+  let gameOver = false;
+  let thinking = false;
+  let difficulty = "hard";
+  let scores = { you: 0, cpu: 0, draw: 0 };
+
+  const $ = id => document.getElementById(id);
+  const boardEl = $("board"), statusEl = $("status"), hintEl = $("hint");
+  const strikeSvg = $("strikeLine");
+
+  // ---- build cells ----
+  const cells = [];
+  for (let i = 0; i < 9; i++) {
+    const b = document.createElement("button");
+    b.className = "cell";
+    b.setAttribute("role", "gridcell");
+    b.setAttribute("aria-label", `Square ${i + 1}, empty`);
+    b.addEventListener("click", () => humanMove(i));
+    boardEl.appendChild(b);
+    cells.push(b);
+  }
+
+  const setStatus = (msg, mood) => {
+    statusEl.textContent = msg;
+    statusEl.removeAttribute("data-mood");
+    if (mood) statusEl.setAttribute("data-mood", mood);
+  };
+  const empties = b => b.map((v, i) => v ? null : i).filter(i => i !== null);
+
+  function winnerOf(b) {
+    for (const line of WIN_LINES) {
+      const [a, c, d] = line;
+      if (b[a] && b[a] === b[c] && b[a] === b[d]) return { player: b[a], line };
+    }
+    return b.every(Boolean) ? { player: "draw", line: null } : null;
+  }
+
+  // ---- AI ----
+  const easyMove = b => {
+    const e = empties(b);
+    return e[Math.floor(Math.random() * e.length)];
+  };
+
+  function mediumMove(b) {
+    const e = empties(b);
+    for (const i of e) { const c = [...b]; c[i] = CPU;   if (winnerOf(c)?.player === CPU)   return i; }
+    for (const i of e) { const c = [...b]; c[i] = HUMAN; if (winnerOf(c)?.player === HUMAN) return i; }
+    // occasionally miss the block, so it "falls for traps"
+    return Math.random() < 0.25 ? easyMove(b) : e[Math.floor(Math.random() * e.length)];
+  }
+
+  function minimax(b, isMax, depth) {
+    const r = winnerOf(b);
+    if (r) return r.player === CPU ? 10 - depth : r.player === HUMAN ? depth - 10 : 0;
+    let best = isMax ? -Infinity : Infinity;
+    for (const i of empties(b)) {
+      b[i] = isMax ? CPU : HUMAN;
+      const s = minimax(b, !isMax, depth + 1);
+      b[i] = "";
+      best = isMax ? Math.max(best, s) : Math.min(best, s);
+    }
+    return best;
+  }
+
+  function hardMove(b) {
+    let bestScore = -Infinity, move = easyMove(b);
+    for (const i of empties(b)) {
+      const c = [...b]; c[i] = CPU;
+      const s = minimax(c, false, 0);
+      if (s > bestScore) { bestScore = s; move = i; }
+    }
+    return move;
+  }
+
+  // ---- flow ----
+  function place(i, p) {
+    board[i] = p;
+    cells[i].innerHTML = MARK_SVG[p];
+    cells[i].classList.add(p);
+    cells[i].disabled = true;
+    cells[i].setAttribute("aria-label", `Square ${i + 1}, ${p === HUMAN ? "X" : "O"}`);
+  }
+
+  function humanMove(i) {
+    if (gameOver || thinking || board[i]) return;
+    place(i, HUMAN);
+    if (!checkEnd()) cpuTurn();
+  }
+
+  function cpuTurn() {
+    thinking = true;
+    setStatus("The system is thinking…");
+    hintEl.textContent = "";
+    setTimeout(() => {
+      const move = difficulty === "easy" ? easyMove(board)
+                 : difficulty === "medium" ? mediumMove(board)
+                 : hardMove(board);
+      place(move, CPU);
+      thinking = false;
+      if (!checkEnd()) {
+        setStatus("Your move.");
+        hintEl.textContent = "You are X";
+      }
+    }, 420 + Math.random() * 380);
+  }
+
+  function drawStrike(line) {
+    const pt = i => [((i % 3) * 2 + 1) / 6 * 100, (Math.floor(i / 3) * 2 + 1) / 6 * 100];
+    const [x1, y1] = pt(line[0]), [x2, y2] = pt(line[2]);
+    const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy);
+    const ext = 9 / len; // extend ~9% past the end cells
+    const el = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    el.setAttribute("x1", x1 - dx * ext); el.setAttribute("y1", y1 - dy * ext);
+    el.setAttribute("x2", x2 + dx * ext); el.setAttribute("y2", y2 + dy * ext);
+    el.setAttribute("pathLength", "1");
+    strikeSvg.appendChild(el);
+  }
+
+  function checkEnd() {
+    const r = winnerOf(board);
+    if (!r) return false;
+    gameOver = true;
+    cells.forEach(c => c.disabled = true);
+    if (r.player === "draw") {
+      scores.draw++; $("scoreDraw").textContent = scores.draw;
+      setStatus("A draw.", "lose");
+      hintEl.textContent = "Nobody takes it";
+    } else if (r.player === HUMAN) {
+      scores.you++; $("scoreYou").textContent = scores.you;
+      setStatus("You take the round.", "win");
+      hintEl.textContent = "Well played";
+      drawStrike(r.line);
+    } else {
+      scores.cpu++; $("scoreCpu").textContent = scores.cpu;
+      setStatus("The system takes it.", "lose");
+      hintEl.textContent = "Try the middle first";
+      drawStrike(r.line);
+    }
+    return true;
+  }
+
+  function restart() {
+    board = Array(9).fill("");
+    gameOver = false; thinking = false;
+    strikeSvg.innerHTML = "";
+    cells.forEach((c, i) => {
+      c.innerHTML = ""; c.className = "cell"; c.disabled = false;
+      c.setAttribute("aria-label", `Square ${i + 1}, empty`);
+    });
+    setStatus("Your move.");
+    hintEl.textContent = "You are X";
+  }
+
+  // ---- controls ----
+  $("restart").addEventListener("click", restart);
+  $("resetScore").addEventListener("click", () => {
+    scores = { you: 0, cpu: 0, draw: 0 };
+    $("scoreYou").textContent = $("scoreDraw").textContent = $("scoreCpu").textContent = "0";
+    restart();
+  });
+
+  document.querySelectorAll(".diff-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".diff-btn").forEach(b => b.setAttribute("aria-pressed", "false"));
+      btn.setAttribute("aria-pressed", "true");
+      difficulty = btn.dataset.diff;
+      restart();
+    });
+  });
+
+  // ---- tweaks ----
+  const tweaks = $("tweaks"), tweaksBtn = $("tweaksBtn");
+  const themeToggle = $("themeToggle"), motionToggle = $("motionToggle");
+  const store = {
+    get: k => { try { return localStorage.getItem("ttt." + k); } catch { return null; } },
+    set: (k, v) => { try { localStorage.setItem("ttt." + k, v); } catch {} }
+  };
+
+  function applyTheme() {
+    const t = store.get("theme") || "paper";
+    document.documentElement.dataset.theme = t;
+    themeToggle.textContent = "Theme: " + (t === "paper" ? "Paper" : "Ink");
+  }
+  function applyMotion() {
+    const m = store.get("motion") || "on";
+    document.documentElement.dataset.motion = m;
+    motionToggle.textContent = "Motion: " + (m === "on" ? "On" : "Off");
+  }
+
+  tweaksBtn.addEventListener("click", () => {
+    const open = tweaks.classList.toggle("open");
+    tweaksBtn.setAttribute("aria-expanded", open);
+  });
+  themeToggle.addEventListener("click", () => {
+    store.set("theme", document.documentElement.dataset.theme === "paper" ? "ink" : "paper");
+    applyTheme();
+  });
+  motionToggle.addEventListener("click", () => {
+    store.set("motion", document.documentElement.dataset.motion === "on" ? "off" : "on");
+    applyMotion();
+  });
+
+  applyTheme();
+  applyMotion();
+})();
+</script>
+</body>
+</html>
